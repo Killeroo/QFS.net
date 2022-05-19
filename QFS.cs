@@ -3,11 +3,11 @@
 namespace QFS.net
 {
     /// <summary>
-    /// Implementation of QFS/RefPack/LZ77 decompression. This compression is used on larger entries inside saves
+    /// Implementation of QFS/RefPack/LZ77 decompression. This compression is used on larger entries inside saves.
     /// </summary>
     /// <remarks>
-    /// Note that this implementaiton contains control characters and other changes specific to SimCity 4.
-    /// You can read about other game specifics at thsi specification for QFS spec http://wiki.niotso.org/RefPack.
+    /// Note that this implementation contains control characters and other changes specific to SimCity 4.
+    /// You can read about other game specifics at this specification for QFS spec http://wiki.niotso.org/RefPack.
     /// 
     /// Ported from https://github.com/wouanagaine/SC4Mapper-2013/blob/db29c9bf88678a144dd1f9438e63b7a4b5e7f635/Modules/qfs.c#L25
     /// 
@@ -30,7 +30,7 @@ namespace QFS.net
         /// // Read raw data for Region View Subfile from save
         /// byte[] data = sc4Save.LoadIndexEntryRaw(REGION_VIEW_SUBFILE_TGI);
         /// 
-        /// // Decompress data (This file will normally be compressed, should idealy check before decompressing)
+        /// // Decompress data (This file will normally be compressed, should ideally check before decompressing)
         /// byte[] decompressedData = QFS.UncompressData(data);
         /// </c>
         /// </example>
@@ -82,7 +82,7 @@ namespace QFS.net
 
             // In QFS the control character tells us what type of decompression operation we are going to perform (there are 4)
             // Most involve using the bytes proceeding the control byte to determine the amount of data that should be copied from what
-            // offset. These bytes are labled a, b and c. Some operations only use 1 proceeding byte, others can use 3
+            // offset. These bytes are labeled a, b and c. Some operations only use 1 proceeding byte, others can use 3
             byte controlCharacter = 0;
             byte a = 0;
             byte b = 0;
