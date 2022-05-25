@@ -1,0 +1,9 @@
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\bin\Debug\netcoreapp3.1\QFSdotnet.deps.json
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\bin\Debug\netcoreapp3.1\QFSdotnet.dll
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\bin\Debug\netcoreapp3.1\QFSdotnet.pdb
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\obj\Debug\netcoreapp3.1\QFSdotnet.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\obj\Debug\netcoreapp3.1\QFSdotnet.AssemblyInfoInputs.cache
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\obj\Debug\netcoreapp3.1\QFSdotnet.AssemblyInfo.cs
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\obj\Debug\netcoreapp3.1\QFSdotnet.csproj.CoreCompileInputs.cache
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\obj\Debug\netcoreapp3.1\QFSdotnet.dll
+C:\Users\Administrator\OneDrive\Documents\QFS.net\QFSdotnet\obj\Debug\netcoreapp3.1\QFSdotnet.pdb
