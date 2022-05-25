@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace QFS.net
+namespace QFSdotnet
 {
     /// <summary>
     /// Implementation of QFS/RefPack/LZ77 decompression. This compression is used on larger entries inside saves.
