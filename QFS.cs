@@ -17,6 +17,61 @@ namespace QFS
     /// </remarks>
     public class QFS
     {
+        private const ushort QFS_Signature = 0xFB10;
+
+        /// <summary>
+		/// Check if the data is compressed.
+		/// </summary>
+		/// <param name="entryData">Data to check</param>
+		/// <returns>TRUE if data is compressed; FALSE otherwise</returns>
+		public static bool IsCompressed(byte[] entryData)
+        {
+            if (entryData.Length > 6)
+            {
+                ushort signature = BitConverter.ToUInt16(entryData, 4); //ToUint32(entryData,2) would otherwise return 0xFB10 0000, but we're only interested in 0xFB10
+                if (signature == QFS_Signature)
+                {
+                    //Memo's message: "there is an s3d file in SC1.dat which would otherwise return true on uncompressed data; this workaround is not fail proof"
+                    //https://github.com/memo33/jDBPFX/blob/fa2535c51de80df48a7f62b79a376e25274998c0/src/jdbpfx/util/DBPFPackager.java#L54
+                    //string fileType = ByteArrayHelper.ToAString(entryData, 0, 4);
+                    //if (fileType.Equals("3DMD")) { //3DMD = 0x3344 4D44 = 860114244
+                    //return false;
+                    //}
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /// <summary>
+		/// Returns data's decompressed length in bytes.
+		/// </summary>
+		/// <param name="cData">Data to check</param>
+		/// <returns>Size of decompressed data. If data is not compressed, the raw size is returned.</returns>
+		public static uint GetDecompressedSize(byte[] cData)
+        {
+            if (IsCompressed(cData))
+            {
+                uint compressedSize = BitConverter.ToUInt32(cData, 0); //first 4 bytes is always the size of header + compressed data
+
+                //read 5 byte header
+                byte[] header = new byte[5];
+                for (int idx = 0; idx < 5; idx++)
+                {
+                    header[idx] = cData[idx + 4];
+                }
+
+                //After QFS identifier, next 3 bytes are the decompressed size ... byte shift most significant byte to least
+                uint decompressedSize = Convert.ToUInt32((header[2] << 16) + (header[3] << 8) + header[4]);
+                return decompressedSize;
+
+            }
+            else
+            {
+                return (uint)cData.Length;
+            }
+        }
+
         /// <summary>
         /// Uncompress data using QFS/RefPak and return uncompressed array of uncompressed data
         /// </summary>
