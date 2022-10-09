@@ -8,9 +8,9 @@ namespace QFS
     /// <remarks>
     /// Note that this implementaiton contains control characters and other changes specific to SimCity 4.
     /// You can read about other game specifics at thsi specification for QFS spec http://wiki.niotso.org/RefPack.
-    /// 
+    ///
     /// Ported from https://github.com/wouanagaine/SC4Mapper-2013/blob/db29c9bf88678a144dd1f9438e63b7a4b5e7f635/Modules/qfs.c#L25
-    /// 
+    ///
     /// More information on file specification:
     /// - https://www.wiki.sc4devotion.com/index.php?title=DBPF_Compression
     /// - http://wiki.niotso.org/RefPack#Naming_notes
@@ -20,23 +20,16 @@ namespace QFS
         private const ushort QFS_Signature = 0xFB10;
 
         /// <summary>
-		/// Check if the data is compressed.
-		/// </summary>
-		/// <param name="entryData">Data to check</param>
-		/// <returns>TRUE if data is compressed; FALSE otherwise</returns>
-		public static bool IsCompressed(byte[] entryData)
+        /// Check if the data is compressed.
+        /// </summary>
+        /// <param name="entryData">Data to check</param>
+        /// <returns>TRUE if data is compressed; FALSE otherwise</returns>
+        public static bool IsCompressed(byte[] entryData)
         {
             if (entryData.Length > 6)
             {
-                ushort signature = BitConverter.ToUInt16(entryData, 4); //ToUint32(entryData,2) would otherwise return 0xFB10 0000, but we're only interested in 0xFB10
-                if (signature == QFS_Signature)
+                if (BitConverter.ToUInt16(entryData, 4) == QFS_Signature)
                 {
-                    //Memo's message: "there is an s3d file in SC1.dat which would otherwise return true on uncompressed data; this workaround is not fail proof"
-                    //https://github.com/memo33/jDBPFX/blob/fa2535c51de80df48a7f62b79a376e25274998c0/src/jdbpfx/util/DBPFPackager.java#L54
-                    //string fileType = ByteArrayHelper.ToAString(entryData, 0, 4);
-                    //if (fileType.Equals("3DMD")) { //3DMD = 0x3344 4D44 = 860114244
-                    //return false;
-                    //}
                     return true;
                 }
             }
@@ -44,27 +37,25 @@ namespace QFS
         }
 
         /// <summary>
-		/// Returns data's decompressed length in bytes.
-		/// </summary>
-		/// <param name="cData">Data to check</param>
-		/// <returns>Size of decompressed data. If data is not compressed, the raw size is returned.</returns>
-		public static uint GetDecompressedSize(byte[] cData)
+        /// Returns data's decompressed length in bytes.
+        /// </summary>
+        /// <param name="cData">Data to check</param>
+        /// <returns>Size of decompressed data. If data is not compressed, the raw size is returned.</returns>
+        public static uint GetDecompressedSize(byte[] cData)
         {
             if (IsCompressed(cData))
             {
-                uint compressedSize = BitConverter.ToUInt32(cData, 0); //first 4 bytes is always the size of header + compressed data
+                //uint compressedSize = BitConverter.ToUInt32(cData, 0); //first 4 bytes is always the size of header + compressed data
 
-                //read 5 byte header
+                // Read 5 byte header
                 byte[] header = new byte[5];
                 for (int idx = 0; idx < 5; idx++)
                 {
                     header[idx] = cData[idx + 4];
                 }
 
-                //After QFS identifier, next 3 bytes are the decompressed size ... byte shift most significant byte to least
-                uint decompressedSize = Convert.ToUInt32((header[2] << 16) + (header[3] << 8) + header[4]);
-                return decompressedSize;
-
+                // After QFS identifier, next 3 bytes are the decompressed size ... byte shift most significant byte to least
+                return Convert.ToUInt32((header[2] << 16) + (header[3] << 8) + header[4]);
             }
             else
             {
@@ -81,10 +72,10 @@ namespace QFS
         /// <c>
         /// // Load save game
         /// SC4SaveFile savegame = new SC4SaveFile(@"C:\Path\To\Save\Game.sc4");
-        /// 
+        ///
         /// // Read raw data for Region View Subfile from save
         /// byte[] data = sc4Save.LoadIndexEntryRaw(REGION_VIEW_SUBFILE_TGI);
-        /// 
+        ///
         /// // Decompress data (This file will normally be compressed, should idealy check before decompressing)
         /// byte[] decompressedData = QFS.UncompressData(data);
         /// </c>
@@ -225,12 +216,9 @@ namespace QFS
             return destinationBytes;
         }
 
-
         public static void CompressData()
         {
-
         }
-
 
         /// <summary>
         /// Method that implements LZ compliant copying of data between arrays
