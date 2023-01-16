@@ -45,7 +45,7 @@ namespace QFS
         {
             if (IsCompressed(cData))
             {
-                //uint compressedSize = BitConverter.ToUInt32(cData, 0); //first 4 bytes is always the size of header + compressed data
+                //First 4 bytes is always the size of header + compressed data
 
                 // Read 5 byte header
                 byte[] header = new byte[5];
@@ -129,71 +129,76 @@ namespace QFS
             // In QFS the control character tells us what type of decompression operation we are going to perform (there are 4)
             // Most involve using the bytes proceeding the control byte to determine the amount of data that should be copied from what
             // offset. These bytes are labled a, b and c. Some operations only use 1 proceeding byte, others can use 3
-            byte controlCharacter = 0;
-            byte a = 0;
-            byte b = 0;
-            byte c = 0;
-            int length = 0;
-            int offset = 0;
+            byte ctrlByte1;
+            byte ctrlByte2;
+            byte ctrlByte3;
+            byte ctrlByte4;
+            int length;
+            int offset;
 
-            // Main decoding loop
-            // Keep decoding while sourcePosition is in source array and position isn't 0xFC?
+            // Main decoding loop. Keep decoding while sourcePosition is in source array and position isn't 0xFC
             while ((sourcePosition < sourceBytes.Length) && (sourceBytes[sourcePosition] < 0xFC))
             {
                 // Read our packcode/control character
-                controlCharacter = sourceBytes[sourcePosition];
+                ctrlByte1 = sourceBytes[sourcePosition];
 
                 // Read bytes proceeding packcode
-                a = sourceBytes[sourcePosition + 1];
-                b = sourceBytes[sourcePosition + 2];
+                ctrlByte2 = sourceBytes[sourcePosition + 1];
+                ctrlByte3 = sourceBytes[sourcePosition + 2];
 
-                // Check which packcode type we are dealing with
-                if ((controlCharacter & 0x80) == 0)
+				// Check which packcode type we are dealing with
+				// Control Characters 0 to 127 (2 byte length CC)
+				if ((ctrlByte1 & 0x80) == 0)
                 {
                     // First we copy from the source array to the destination array
-                    length = controlCharacter & 3;
+                    length = ctrlByte1 & 3;
                     LZCompliantCopy(ref sourceBytes, sourcePosition + 2, ref destinationBytes, destinationPosition, length);
 
                     // Then we copy characters already in the destination array to our current position in the destination array
                     sourcePosition += length + 2;
                     destinationPosition += length;
-                    length = ((controlCharacter & 0x1C) >> 2) + 3;
-                    offset = ((controlCharacter >> 5) << 8) + a + 1;
+                    length = ((ctrlByte1 & 0x1C) >> 2) + 3;
+                    offset = ((ctrlByte1 >> 5) << 8) + ctrlByte2 + 1;
                     LZCompliantCopy(ref destinationBytes, destinationPosition - offset, ref destinationBytes, destinationPosition, length);
 
                     destinationPosition += length;
                 }
-                else if ((controlCharacter & 0x40) == 0)
+
+				// Control Characters 128 to 191 (3 byte length CC)
+				else if ((ctrlByte1 & 0x40) == 0)
                 {
-                    length = (a >> 6) & 3;
+                    length = (ctrlByte2 >> 6) & 3;
                     LZCompliantCopy(ref sourceBytes, sourcePosition + 3, ref destinationBytes, destinationPosition, length);
 
                     sourcePosition += length + 3;
                     destinationPosition += length;
-                    length = (controlCharacter & 0x3F) + 4;
-                    offset = (a & 0x3F) * 256 + b + 1;
+                    length = (ctrlByte1 & 0x3F) + 4;
+                    offset = (ctrlByte2 & 0x3F) * 256 + ctrlByte3 + 1;
                     LZCompliantCopy(ref destinationBytes, destinationPosition - offset, ref destinationBytes, destinationPosition, length);
 
                     destinationPosition += length;
                 }
-                else if ((controlCharacter & 0x20) == 0)
-                {
-                    c = sourceBytes[sourcePosition + 3];
 
-                    length = controlCharacter & 3;
+				// Control Characters 192 to 223 (4 byte length CC)
+				else if ((ctrlByte1 & 0x20) == 0)
+                {
+                    ctrlByte4 = sourceBytes[sourcePosition + 3];
+
+                    length = ctrlByte1 & 3;
                     LZCompliantCopy(ref sourceBytes, sourcePosition + 4, ref destinationBytes, destinationPosition, length);
 
                     sourcePosition += length + 4;
                     destinationPosition += length;
-                    length = ((controlCharacter >> 2) & 3) * 256 + c + 5;
-                    offset = ((controlCharacter & 0x10) << 12) + 256 * a + b + 1;
+                    length = ((ctrlByte1 >> 2) & 3) * 256 + ctrlByte4 + 5;
+                    offset = ((ctrlByte1 & 0x10) << 12) + 256 * ctrlByte2 + ctrlByte3 + 1;
                     LZCompliantCopy(ref destinationBytes, destinationPosition - offset, ref destinationBytes, destinationPosition, length);
 
                     destinationPosition += length;
                 }
-                else
-                {
-                    length = (controlCharacter & 0x1F) * 4 + 4;
+
+				// Control Characters 224 to 251 (1 byte length CC)
+				else {
+                    length = (ctrlByte1 & 0x1F) * 4 + 4;
                     LZCompliantCopy(ref sourceBytes, sourcePosition + 1, ref destinationBytes, destinationPosition, length);
 
                     sourcePosition += length + 1;
@@ -201,8 +206,9 @@ namespace QFS
                 }
             }
 
-            // Add trailing bytes
-            if ((sourcePosition < sourceBytes.Length) && (destinationPosition < destinationBytes.Length))
+			// Add trailing bytes
+			// Control Characters 252 to 255 (1 byte length CC)
+			if ((sourcePosition < sourceBytes.Length) && (destinationPosition < destinationBytes.Length))
             {
                 LZCompliantCopy(ref sourceBytes, sourcePosition + 1, ref destinationBytes, destinationPosition, sourceBytes[sourcePosition] & 3);
                 destinationPosition += sourceBytes[sourcePosition] & 3;
