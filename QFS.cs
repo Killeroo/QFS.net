@@ -247,7 +247,24 @@ namespace QFS
             }
 
             return destinationBytes;
-        }
+		}
+
+
+
+		/// <summary>
+		/// Compress data using QFS/RefPack compression
+		/// </summary>
+		/// <param name="dData"></param>
+		/// <returns></returns>
+		/// <remarks>
+		/// This method has been adapted from deflate.c in zlib version 1.2.3. It can produce smaller files than the FSHTool QFS compression code. null45 is fairly certain the idea was borrowed from another QFS implementation, but the original source is unknown. https://community.simtropolis.com/forums/topic/762189-simcity-4-open-access-repository-of-modding-tools/?do=findComment&comment=1777854
+		/// </remarks>
+		public static byte[] Compress(byte[] dData) {
+			if (dData.Length < MinUncompresedSize || dData.Length > MaxUncompressedSize) {
+				return dData;
+			}
+			return new QFSCompress(dData).Compress();
+		}
 
 
 
@@ -295,25 +312,17 @@ namespace QFS
 			private const int MinMatch = 3;
 			private const int MaxMatch = 1028;
 
-
-
-			byte[] dData; //input
-			//int dLen = dData.Length; // inputLength;
-			byte[] cData; //output
-						  //int cLen; // outputLength;
-			private int cPos;
-			private int readPosition;
-			private int lastWritePosition;
-			private int remaining;
-			private readonly bool prefixLength;
+			private readonly byte[] dData; //Decompressed data = input data
+			private byte[] cData; //Compressed data = output data
+			private int cPos; //position we're at in the output data
+			private int readPos; //aka dPos or position we're at in the input data
+			private int lastWritePos;
+			private int remaining; //number of bytes left to be read from dData
 
 			private int hash;
 			private readonly int[] head;
 			private readonly int[] prev;
 
-
-
-			//Build up the parameters used for the compression
 			private readonly int windowSize;
 			private readonly int windowMask;
 			private readonly int maxWindowOffset;
@@ -322,15 +331,12 @@ namespace QFS
 			private readonly int hashShift;
 
 			private int matchStart;
-			private int matchLength;
+			private int matchLength; //number of characters to use for determining a match with previously compressed data
 			private int prevLength;
-
-			//dData = Decompressed data = input data
-			//cData = COmpressed data = output data
 
 			public QFSCompress(byte[] data) {
 				dData = data;
-				cData = new byte[dData.Length];
+				cData = new byte[dData.Length-1];
 
 				if (dData.Length < MaxWindowSize) {
 					windowSize = 1 << BitOperations.Log2((uint) dData.Length);
@@ -345,23 +351,29 @@ namespace QFS
 				windowMask = maxWindowOffset;
 				hashMask = hashSize - 1;
 
+				hash = 0;
+				head = new int[hashSize];
+				prev = new int[windowSize];
 
-				int hash = 0;
-				int[] head = new int[hashSize];
-				int[] prev = new int[windowSize];
-
-				int readPosition = 0;
-				int remaining = dData.Length;
-				int cPos = 5; //QFS header size is 5 bytes
-				int lastWritePosition = 0;
-				bool prefixLength = true;
+				readPos = 0;
+				remaining = dData.Length;
+				cPos = 5; //QFS header size is 5 bytes
+				lastWritePos = 0;
 				Array.Fill(head, -1);
 			}
 
+
+			/// <summary>
+			/// Compresses this instance.
+			/// </summary>
+			/// <returns></returns>
+			/// <remarks>
+			/// This method has been adapted from deflate.c in zlib version 1.2.3.
+			/// </remarks>
 			public byte[] Compress() {
-				//Begin the compression
 				hash = ((hash << hashShift) ^ dData[1]) & hashMask;
 				int lastMatch = dData.Length - MinMatch;
+
 				while (remaining > 0) {
 					matchLength = MinMatch - 1;
 					prevLength = matchLength;
@@ -372,19 +384,19 @@ namespace QFS
 					// Insert the string window[readPosition .. readPosition+2] in the
 					// dictionary, and set hash_head to the head of the hash chain:
 					if (remaining >= MinMatch) {
-						hash = ((hash << hashShift) ^ dData[readPosition + MinMatch - 1]) & hashMask;
+						hash = ((hash << hashShift) ^ dData[readPos + MinMatch - 1]) & hashMask;
 
 						hash_head = head[hash];
-						prev[readPosition & windowMask] = hash_head;
-						head[hash] = readPosition;
+						prev[readPos & windowMask] = hash_head;
+						head[hash] = readPos;
 					}
 
 
-					if (hash_head >= 0 && prevLength < MaxLazy && readPosition - hash_head <= windowSize) {
+					if (hash_head >= 0 && prevLength < MaxLazy && readPos - hash_head <= windowSize) {
 						int bestLength = LongestMatch(hash_head);
 
 						if (bestLength >= MinMatch) {
-							int bestOffset = readPosition - matchStart;
+							int bestOffset = readPos - matchStart;
 
 							if (bestOffset <= 1024 ||
 								bestOffset <= 16384 && bestLength >= 4 ||
@@ -410,23 +422,23 @@ namespace QFS
 						prevLength -= 2;
 
 						do {
-							readPosition++;
+							readPos++;
 
-							if (readPosition < lastMatch) {
-								hash = ((hash << hashShift) ^ dData[readPosition + MinMatch - 1]) & hashMask;
+							if (readPos < lastMatch) {
+								hash = ((hash << hashShift) ^ dData[readPos + MinMatch - 1]) & hashMask;
 
 								hash_head = head[hash];
-								prev[readPosition & windowMask] = hash_head;
-								head[hash] = readPosition;
+								prev[readPos & windowMask] = hash_head;
+								head[hash] = readPos;
 							}
 							prevLength--;
 						}
 						while (prevLength > 0);
 
 						matchLength = MinMatch - 1;
-						readPosition++;
+						readPos++;
 					} else {
-						readPosition++;
+						readPos++;
 						remaining--;
 					}
 				}
@@ -443,28 +455,22 @@ namespace QFS
 				cData[4] = (byte) (dData.Length & 0xff);
 
 				// Trim the output array to its actual size.
-				if (prefixLength) {
-					int finalLength = cPos + 4;
-					if (finalLength >= dData.Length) {
-						return null;
-					}
-
-					byte[] temp = new byte[finalLength];
-
-					// Write the compressed data length in little endian byte order.
-					temp[0] = (byte) (cPos & 0xff);
-					temp[1] = (byte) ((cPos >> 8) & 0xff);
-					temp[2] = (byte) ((cPos >> 16) & 0xff);
-					temp[3] = (byte) ((cPos >> 24) & 0xff);
-
-					Buffer.BlockCopy(cData, 0, temp, 4, cPos);
-					cData = temp;
-				} else {
-					byte[] temp = new byte[cPos];
-					Buffer.BlockCopy(cData, 0, temp, 0, cPos);
-
-					cData = temp;
+				int finalLength = cPos + 4;
+				if (finalLength >= dData.Length) {
+					return null;
 				}
+
+				byte[] temp = new byte[finalLength];
+
+				// Write the compressed data length in little endian byte order.
+				temp[0] = (byte) (cPos & 0xff);
+				temp[1] = (byte) ((cPos >> 8) & 0xff);
+				temp[2] = (byte) ((cPos >> 16) & 0xff);
+				temp[3] = (byte) ((cPos >> 24) & 0xff);
+
+				Buffer.BlockCopy(cData, 0, temp, 4, cPos);
+				cData = temp;
+				
 
 				return cData;
 			}
@@ -478,8 +484,8 @@ namespace QFS
 			/// <see langword="true"/> if the data was compressed; otherwise, <see langword="false"/>.
 			/// </returns>
 			private bool WriteCompressedData(int startOffset) {
-				int endOffset = readPosition - 1;
-				int run = endOffset - lastWritePosition;
+				int endOffset = readPos - 1;
+				int run = endOffset - lastWritePos;
 
 				while (run > 3) // 1 byte literal op code 0xE0 - 0xFB
 				{
@@ -495,13 +501,13 @@ namespace QFS
 					// A for loop is faster than Buffer.BlockCopy for data less than or equal to 32 bytes.
 					if (blockLength <= 32) {
 						for (int i = 0; i < blockLength; i++) {
-							cData[cPos] = dData[lastWritePosition];
-							lastWritePosition++;
+							cData[cPos] = dData[lastWritePos];
+							lastWritePos++;
 							cPos++;
 						}
 					} else {
-						Buffer.BlockCopy(dData, lastWritePosition, cData, cPos, blockLength);
-						lastWritePosition += blockLength;
+						Buffer.BlockCopy(dData, lastWritePos, cData, cPos, blockLength);
+						lastWritePos += blockLength;
 						cPos += blockLength;
 					}
 
@@ -545,11 +551,11 @@ namespace QFS
 				}
 
 				for (int i = 0; i < run; i++) {
-					cData[cPos] = dData[lastWritePosition];
-					lastWritePosition++;
+					cData[cPos] = dData[lastWritePos];
+					lastWritePos++;
 					cPos++;
 				}
-				lastWritePosition += copyLength;
+				lastWritePos += copyLength;
 
 				return true;
 			}
@@ -561,7 +567,7 @@ namespace QFS
 			/// <see langword="true"/> if the data was compressed; otherwise, <see langword="false"/>.
 			/// </returns>
 			private bool WriteTrailingBytes() {
-				int run = readPosition - lastWritePosition;
+				int run = readPos - lastWritePos;
 
 				while (run > 3) // 1 byte literal op code 0xE0 - 0xFB
 				{
@@ -577,13 +583,13 @@ namespace QFS
 					// A for loop is faster than Buffer.BlockCopy for data less than or equal to 32 bytes.
 					if (blockLength <= 32) {
 						for (int i = 0; i < blockLength; i++) {
-							cData[cPos] = dData[lastWritePosition];
-							lastWritePosition++;
+							cData[cPos] = dData[lastWritePos];
+							lastWritePos++;
 							cPos++;
 						}
 					} else {
-						Buffer.BlockCopy(dData, lastWritePosition, cData, cPos, blockLength);
-						lastWritePosition += blockLength;
+						Buffer.BlockCopy(dData, lastWritePos, cData, cPos, blockLength);
+						lastWritePos += blockLength;
 						cPos += blockLength;
 					}
 					run -= blockLength;
@@ -597,8 +603,8 @@ namespace QFS
 				cPos++;
 
 				for (int i = 0; i < run; i++) {
-					cData[cPos] = dData[lastWritePosition];
-					lastWritePosition++;
+					cData[cPos] = dData[lastWritePos];
+					lastWritePos++;
 					cPos++;
 				}
 
@@ -617,7 +623,7 @@ namespace QFS
 			/// </remarks>
 			private int LongestMatch(int currentMatch) {
 				int chainLength = MaxChain;
-				int scan = readPosition;
+				int scan = readPos;
 				int bestLength = prevLength;
 
 				if (bestLength >= remaining) {
@@ -640,7 +646,7 @@ namespace QFS
 				}
 
 				int maxLength = Math.Min(remaining, MaxMatch);
-				int limit = readPosition > maxWindowOffset ? readPosition - maxWindowOffset : 0;
+				int limit = readPos > maxWindowOffset ? readPos - maxWindowOffset : 0;
 
 				do {
 					int match = currentMatch;
@@ -674,23 +680,6 @@ namespace QFS
 
 				return bestLength;
 			}
-		}
-
-
-
-		/// <summary>
-		/// Compress data using QFS/RefPack compression
-		/// </summary>
-		/// <param name="dData"></param>
-		/// <returns></returns>
-		/// <remarks>
-		/// This method has been adapted from deflate.c in zlib version 1.2.3. It can produce smaller files than the FSHTool QFS compression code. null45 is fairly certain the idea was borrowed from another QFS implementation, but the original source is unknown. https://community.simtropolis.com/forums/topic/762189-simcity-4-open-access-repository-of-modding-tools/?do=findComment&comment=1777854
-		/// </remarks>
-		public static byte[] Compress(byte[] dData) {
-			if (dData.Length < MinUncompresedSize || dData.Length > MaxUncompressedSize) {
-				return dData;
-			}
-           return new QFSCompress(dData).Compress();
 		}
 
 
