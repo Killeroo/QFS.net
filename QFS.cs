@@ -1,12 +1,6 @@
 ﻿using System;
 using System.Numerics;
-using System.Runtime.InteropServices;
-using System.Security.Claims;
-using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.VisualBasic;
-using static System.Net.Mime.MediaTypeNames;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace QFS
 {
@@ -266,7 +260,33 @@ namespace QFS
 			return new QFSCompress(dData).Compress();
 		}
 
-
+		//https://en.wikipedia.org/wiki/LZ77_and_LZ78#LZ77
+		//https://www.wiki.sc4devotion.com/index.php?title=DBPF_Compression
+		//LZ77 algorithms achieve compression by replacing repeated occurrences of data with references to a single copy of that data existing earlier in the uncompressed data stream. A match is encoded by a pair of numbers called a length-distance pair, which is equivalent to the statement "each of the next length characters is equal to the characters exactly distance characters behind it in the uncompressed stream". (The distance is sometimes called the offset instead.) For example, if the word "heureka" occurs twice in a file, the second occurrence would be encoded by pointing to the first, thus lowering the size of the file. 
+		//To spot matches, the encoder must keep track of some amount of the most recent data. The structure in which this data is held is called a sliding window, which is why LZ77 is sometimes called sliding-window compression. The encoder needs to keep this data to look for matches, and the decoder needs to keep this data to interpret the matches the encoder refers to. The larger the sliding window is, the longer back the encoder may search for creating references.
+		//The compression is done by defining control characters that tell three things: 1) How many characters of plain text that follow should be appended to the output. 2) How many characters should be read from the already decoded text (and appended to the output). 3) Where to read the characters from in the already decoded text.
+		//Pseudocode:
+		/* 
+		 * while input is not empty do
+		 *		match := longest repeated occurrence of input that begins in window
+		 *		
+		 *		if match exists then
+		 *			d := distance to start of match
+		 *			l := length of match
+		 *			c := char following match in input
+		 *		else
+		 *			d := 0
+		 *			l := 0
+		 *			c := first char of input
+		 *		end if
+		 *		
+		 *		output (d, l, c)
+		 *		
+		 *		discard l + 1 chars from front of window
+		 *		s := pop l + 1 chars from front of input
+		 *		append s to back of window
+		 *	repeat
+		 */
 
 
 
@@ -274,34 +294,6 @@ namespace QFS
 		/// A helper class specifically for the compression algorithm to condense all of the fields together in a central location and not clutter the main QFS class.
 		/// </summary>
 		private class QFSCompress {
-			//https://en.wikipedia.org/wiki/LZ77_and_LZ78#LZ77
-			//https://www.wiki.sc4devotion.com/index.php?title=DBPF_Compression
-			//LZ77 algorithms achieve compression by replacing repeated occurrences of data with references to a single copy of that data existing earlier in the uncompressed data stream. A match is encoded by a pair of numbers called a length-distance pair, which is equivalent to the statement "each of the next length characters is equal to the characters exactly distance characters behind it in the uncompressed stream". (The distance is sometimes called the offset instead.) For example, if the word "heureka" occurs twice in a file, the second occurrence would be encoded by pointing to the first, thus lowering the size of the file. 
-			//To spot matches, the encoder must keep track of some amount of the most recent data. The structure in which this data is held is called a sliding window, which is why LZ77 is sometimes called sliding-window compression. The encoder needs to keep this data to look for matches, and the decoder needs to keep this data to interpret the matches the encoder refers to. The larger the sliding window is, the longer back the encoder may search for creating references.
-			//The compression is done by defining control characters that tell three things: 1) How many characters of plain text that follow should be appended to the output. 2) How many characters should be read from the already decoded text (and appended to the output). 3) Where to read the characters from in the already decoded text.
-			//Pseudocode:
-			/* 
-			 * while input is not empty do
-			 *		match := longest repeated occurrence of input that begins in window
-			 *		
-			 *		if match exists then
-			 *			d := distance to start of match
-			 *			l := length of match
-			 *			c := char following match in input
-			 *		else
-			 *			d := 0
-			 *			l := 0
-			 *			c := first char of input
-			 *		end if
-			 *		
-			 *		output (d, l, c)
-			 *		
-			 *		discard l + 1 chars from front of window
-			 *		s := pop l + 1 chars from front of input
-			 *		append s to back of window
-			 *	repeat
-			 */
-
 			private const int LiteralRunMaxLength = 112;
 			private const int MaxWindowSize = 131072;
 			private const int MaxHashSize = 65536;
@@ -683,7 +675,174 @@ namespace QFS
 		}
 
 
-		
+		// compressing a QFS file */
+		// note: inbuf should have at least 1028 bytes beyond buflen - this is guaranteed from above QFSCompression.CompressBlock, but not if called directly
+		// 0=OK,<0 ERROR
+		public static byte[] QFS_Compress(byte[] dData) {
+
+			// Static Buffers
+			const int QFS_MAXITER = 50;
+			const int WINDOW_SIZE = 1 << 17; // 2 ^ 17) '131072
+			const int WINDOW_MASK = WINDOW_SIZE - 1;
+
+			//these are the occurrence tables.
+			int[] rev_similar = new int[WINDOW_SIZE];    // indices are file position - auto initialized to zero
+			//rev_last stores length-distance pairs: aka "next *length* characters are equal to characters *distance* behind in cData
+			int[,] rev_last = new int[256, 256];     // 64kB indices are successive input char bytes
+
+			int dPos;
+			byte[] cData = new byte[dData.Length + 1028]; // for now
+
+
+			//first 4 bytes are size of next 5 bytes + compressed data (we dont know this yet so set at end?)
+
+			//5 byte header: 10FB then uncompressed file size
+			cData[0] = 0x10;
+			cData[1] = 0xFB;      
+			cData[2] = (byte) ((dData.Length >> 16) & 0xff); //convert to big endian. only get last 8 bytes of the value
+			cData[3] = (byte) ((dData.Length >> 8) & 0xff);
+			cData[4] = (byte) (dData.Length & 0xff);
+			int cPos = 5;
+
+			int bestlen, blen, offs, bestoffs = default;
+			int lastwrot = 0;
+			int x, i;
+
+			// main encoding loop
+			for (dPos = 0; dPos < dData.Length; dPos++) {
+
+				// adjust occurrence tables
+				x = rev_last[dData[dPos], dData[dPos + 1]] - 1; //just reduce by one before using
+				rev_similar[dPos & WINDOW_MASK] = x + 1; //and increment by one on storing (wrap around if >than WINDOW SIZE
+				rev_last[dData[dPos], dData[dPos + 1]] = dPos + 1; //now the init can be zero (the default)
+				offs = x;
+
+				// if this has already been compressed, skip ahead
+				if (dPos >= lastwrot) { // look for a redundancy (repeat)
+					bestlen = 0;
+					i = 0;
+					while (offs >= 0 & dPos - offs < WINDOW_SIZE & i < QFS_MAXITER) {
+						blen = 2;
+						while (dData[dPos + blen] == dData[offs + blen] & blen < 1028)     // !!! this is why Buffer needs to be 1028> than actual data
+							blen++;                                                       // do while ((*(incmp++)==*(inref++)) and (blen<1028))
+						if (blen > bestlen) {
+							bestlen = blen;
+							bestoffs = dPos - offs;
+						}
+						offs = rev_similar[offs & WINDOW_MASK] - 1;        // just reduce by one before using
+						i++;
+					}
+
+					// check if (repeat) redundancy is good enough
+					if (bestlen > dData.Length - dPos)
+						bestlen = 0; // was (InPos - InLen) effectively -bestlen
+					if (bestlen <= 2) {
+						bestlen = 0;
+					} else if (bestlen == 3 & bestoffs > 1024) {
+						bestlen = 0;
+					} else if (bestlen == 4 & bestoffs > 16384) {
+						bestlen = 0;
+					}
+
+					// update compressed data
+					if (bestlen != 0) {
+
+						while (dPos - lastwrot >= 4) {
+							blen = (dPos - lastwrot) / 4 - 1;
+							if (blen > 0x1B)
+								blen = 0x1B;
+							cData[cPos] = (byte) (0xE0 + blen);
+							cPos++;
+							blen = 4 * blen + 4;
+							SlowMemCopy(cData, cPos, dData, lastwrot, blen);
+							lastwrot += blen;
+							cPos += blen;
+						}
+
+						blen = dPos - lastwrot;
+
+						if (bestlen <= 10 && bestoffs <= 1024) {
+							cData[cPos] = (byte) ((bestoffs - 1) / 256 * 32 + (bestlen - 3) * 4 + blen);
+							cPos++;
+							cData[cPos] = (byte) (bestoffs - 1 & 0xFF);
+							cPos++;
+							SlowMemCopy(cData, cPos, dData, lastwrot, blen);
+							lastwrot += blen;
+							cPos += blen;
+							lastwrot += bestlen;
+						} else if (bestlen <= 67 && bestoffs <= 16384) {
+							cData[cPos] = (byte) (0x80 + (bestlen - 4));
+							cPos++;
+							cData[cPos] = (byte) (blen * 64 + (bestoffs - 1) / 256);
+							cPos++;
+							cData[cPos] = (byte) (bestoffs - 1 & 0xFF);
+							cPos++;
+							SlowMemCopy(cData, cPos, dData, lastwrot, blen);
+							lastwrot += blen;
+							cPos += blen;
+							lastwrot += bestlen;
+						} else if (bestlen <= 1028 && bestoffs < WINDOW_SIZE) {
+							bestoffs--;
+							cData[cPos] = (byte) (0xC0 + bestoffs / 65536 * 16 + (bestlen - 5) / 256 * 4 + blen);
+							cPos++;
+							cData[cPos] = (byte) (bestoffs / 256 & 0xFF);
+							cPos++;
+							cData[cPos] = (byte) (bestoffs & 0xFF);
+							cPos++;
+							cData[cPos] = (byte) (bestlen - 5 & 0xFF);
+							cPos++;
+							SlowMemCopy(cData, cPos, dData, lastwrot, blen);
+							lastwrot += blen;
+							cPos += blen;
+							lastwrot += bestlen;
+						}
+
+					}
+				}
+			}
+
+			// end stuff
+			dPos = dData.Length;
+			while (dPos - lastwrot >= 4) {
+				blen = (dPos - lastwrot) / 4 - 1;
+				if (blen > 0x1B)
+					blen = 0x1B;
+				cData[cPos] = (byte) (0xE0 + blen);
+				cPos++;
+				blen = 4 * blen + 4;
+				SlowMemCopy(cData, cPos, dData, lastwrot, blen);
+				lastwrot += blen;
+				cPos += blen;
+			}
+
+			blen = dPos - lastwrot;
+			cData[cPos] = (byte) (0xFC + blen);  // end marker
+			cPos++;
+			SlowMemCopy(cData, cPos, dData, lastwrot, blen);
+			lastwrot += blen;
+			cPos += blen;
+
+			if (lastwrot != dData.Length) {
+				Interaction.MsgBox("Something strange happened at the end of QFS compression!");
+				//return -1;
+			}
+
+			Array.Resize(ref cData, cPos);     // finally
+			//Buflen = cPos; // length of the new compressed buffer
+			return cData;
+		}
+
+		private static void SlowMemCopy(byte[] dst, int dstptr, byte[] src, int srcptr, int nbytes) {
+
+			// NOTE:: DO NOT change this into a system call, the nature of QFS means that it MUST work byte for byte (internal overlaps possible) and in any case this is fast
+			while (nbytes > 0) {
+				dst[dstptr] = src[srcptr];
+				dstptr++;
+				srcptr++;
+				nbytes--;
+			}
+
+		}
 
 
 

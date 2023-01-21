@@ -28,6 +28,8 @@ Jean-loup Gailly        Mark Adler
 jloup@gzip.org          madler@alumni.caltech.edu
 */
 
+//This code is unmodified from null45's original.
+
 using System;
 using System.Numerics;
 
