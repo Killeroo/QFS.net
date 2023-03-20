@@ -27,24 +27,22 @@ freely, subject to the following restrictions:
 Jean-loup Gailly        Mark Adler
 jloup@gzip.org          madler@alumni.caltech.edu
 */
-
-//This code is unmodified from null45's original.
-
 using System;
 using System.Numerics;
 
 namespace QFS.net {
-	/// <summary>
-	/// An implementation of the QFS/RefPack compression format used in SC4 DBPF files.
-	/// </summary>
-	/// <remarks>
-	/// QFS/RefPack is a byte oriented compression format similar to LZ77.<br/>
-	/// <br/>
-	/// References:<br/>
-	/// https://wiki.sc4devotion.com/index.php?title=DBPF_Compression<br/>
-	/// http://wiki.niotso.org/RefPack
-	/// </remarks>
-	internal static class QfsCompression {
+    //This code is unmodified from null45's original.
+    /// <summary>
+    /// An implementation of the QFS/RefPack compression format used in SC4 DBPF files.
+    /// </summary>
+    /// <remarks>
+    /// QFS/RefPack is a byte oriented compression format similar to LZ77.<br/>
+    /// <br/>
+    /// References:<br/>
+    /// https://wiki.sc4devotion.com/index.php?title=DBPF_Compression<br/>
+    /// http://wiki.niotso.org/RefPack
+    /// </remarks>
+    internal static class QfsCompression {
 		/// <summary>
 		/// The minimum size in bytes of an uncompressed buffer that can be compressed with QFS compression.
 		/// </summary>
@@ -658,4 +656,401 @@ namespace QFS.net {
 			}
 		}
 	}
+
+
+    //Modified code is below
+    /// <summary>
+    /// Compress data using QFS/RefPack compression
+    /// </summary>
+    /// <param name="dData"></param>
+    /// <returns></returns>
+    /// <remarks>
+    /// This method has been adapted from deflate.c in zlib version 1.2.3. It can produce smaller files than the FSHTool QFS compression code. null45 is fairly certain the idea was borrowed from another QFS implementation, but the original source is unknown. https://community.simtropolis.com/forums/topic/762189-simcity-4-open-access-repository-of-modding-tools/?do=findComment&comment=1777854
+    /// </remarks>
+    //public static byte[] Compress(byte[] dData) {
+    //	if (dData.Length < MinUncompresedSize || dData.Length > MaxUncompressedSize) {
+    //		return dData;
+    //	}
+    //	return new QFSCompress(dData).Compress();
+    //}
+    //private class QFSCompress {
+    //    private const int LiteralRunMaxLength = 112;
+    //    private const int MaxWindowSize = 131072;
+    //    private const int MaxHashSize = 65536;
+    //    private const int GoodLength = 32;
+    //    private const int MaxLazy = 258;
+    //    private const int NiceLength = 258;
+    //    private const int MaxChain = 4096;
+    //    private const int MinMatch = 3;
+    //    private const int MaxMatch = 1028;
+
+    //    private readonly byte[] dData; //Decompressed data = input data
+    //    private byte[] cData; //Compressed data = output data
+    //    private int cPos; //position we're at in the output data
+    //    private int readPos; //aka dPos or position we're at in the input data
+    //    private int lastWritePos;
+    //    private int remaining; //number of bytes left to be read from dData
+
+    //    private int hash;
+    //    private readonly int[] head;
+    //    private readonly int[] prev;
+
+    //    private readonly int windowSize;
+    //    private readonly int windowMask;
+    //    private readonly int maxWindowOffset;
+    //    private readonly int hashSize;
+    //    private readonly int hashMask;
+    //    private readonly int hashShift;
+
+    //    private int matchStart;
+    //    private int matchLength; //number of characters to use for determining a match with previously compressed data
+    //    private int prevLength;
+
+    //    public QFSCompress(byte[] data) {
+    //        dData = data;
+    //        cData = new byte[dData.Length - 1];
+
+    //        if (dData.Length < MaxWindowSize) {
+    //            windowSize = 1 << BitOperations.Log2((uint) dData.Length);
+    //            hashSize = Math.Max(windowSize / 2, 32);
+    //            hashShift = (BitOperations.TrailingZeroCount(hashSize) + MinMatch - 1) / MinMatch;
+    //        } else {
+    //            windowSize = MaxWindowSize;
+    //            hashSize = MaxHashSize;
+    //            hashShift = 6;
+    //        }
+    //        maxWindowOffset = windowSize - 1;
+    //        windowMask = maxWindowOffset;
+    //        hashMask = hashSize - 1;
+
+    //        hash = 0;
+    //        head = new int[hashSize];
+    //        prev = new int[windowSize];
+
+    //        readPos = 0;
+    //        remaining = dData.Length;
+    //        cPos = 5; //QFS header size is 5 bytes
+    //        lastWritePos = 0;
+    //        Array.Fill(head, -1);
+    //    }
+
+
+    //    /// <summary>
+    //    /// Compresses this instance.
+    //    /// </summary>
+    //    /// <returns></returns>
+    //    /// <remarks>
+    //    /// This method has been adapted from deflate.c in zlib version 1.2.3.
+    //    /// </remarks>
+    //    public byte[] Compress() {
+    //        hash = ((hash << hashShift) ^ dData[1]) & hashMask;
+    //        int lastMatch = dData.Length - MinMatch;
+
+    //        while (remaining > 0) {
+    //            matchLength = MinMatch - 1;
+    //            prevLength = matchLength;
+    //            int prev_match = matchStart;
+
+    //            int hash_head = -1;
+
+    //            // Insert the string window[readPosition .. readPosition+2] in the
+    //            // dictionary, and set hash_head to the head of the hash chain:
+    //            if (remaining >= MinMatch) {
+    //                hash = ((hash << hashShift) ^ dData[readPos + MinMatch - 1]) & hashMask;
+
+    //                hash_head = head[hash];
+    //                prev[readPos & windowMask] = hash_head;
+    //                head[hash] = readPos;
+    //            }
+
+
+    //            if (hash_head >= 0 && prevLength < MaxLazy && readPos - hash_head <= windowSize) {
+    //                int bestLength = LongestMatch(hash_head);
+
+    //                if (bestLength >= MinMatch) {
+    //                    int bestOffset = readPos - matchStart;
+
+    //                    if (bestOffset <= 1024 ||
+    //                        bestOffset <= 16384 && bestLength >= 4 ||
+    //                        bestOffset <= windowSize && bestLength >= 5) {
+    //                        matchLength = bestLength;
+    //                    }
+    //                }
+    //            }
+
+    //            // If there was a match at the previous step and the current
+    //            // match is not better, output the previous match:
+    //            if (prevLength >= MinMatch && matchLength <= prevLength) {
+    //                if (!WriteCompressedData(prev_match)) {
+    //                    return null;
+    //                }
+
+    //                // Insert in hash table all strings up to the end of the match.
+    //                // readPosition-1 and readPosition are already inserted. If there is not
+    //                // enough lookahead, the last two strings are not inserted in
+    //                // the hash table.
+
+    //                remaining -= (prevLength - 1);
+    //                prevLength -= 2;
+
+    //                do {
+    //                    readPos++;
+
+    //                    if (readPos < lastMatch) {
+    //                        hash = ((hash << hashShift) ^ dData[readPos + MinMatch - 1]) & hashMask;
+
+    //                        hash_head = head[hash];
+    //                        prev[readPos & windowMask] = hash_head;
+    //                        head[hash] = readPos;
+    //                    }
+    //                    prevLength--;
+    //                }
+    //                while (prevLength > 0);
+
+    //                matchLength = MinMatch - 1;
+    //                readPos++;
+    //            } else {
+    //                readPos++;
+    //                remaining--;
+    //            }
+    //        }
+
+    //        if (!WriteTrailingBytes()) {
+    //            return null;
+    //        }
+
+    //        // Write the compressed data header.
+    //        cData[0] = 0x10;
+    //        cData[1] = 0xFB;
+    //        cData[2] = (byte) ((dData.Length >> 16) & 0xff);
+    //        cData[3] = (byte) ((dData.Length >> 8) & 0xff);
+    //        cData[4] = (byte) (dData.Length & 0xff);
+
+    //        // Trim the output array to its actual size.
+    //        int finalLength = cPos + 4;
+    //        if (finalLength >= dData.Length) {
+    //            return null;
+    //        }
+
+    //        byte[] temp = new byte[finalLength];
+
+    //        // Write the compressed data length in little endian byte order.
+    //        temp[0] = (byte) (cPos & 0xff);
+    //        temp[1] = (byte) ((cPos >> 8) & 0xff);
+    //        temp[2] = (byte) ((cPos >> 16) & 0xff);
+    //        temp[3] = (byte) ((cPos >> 24) & 0xff);
+
+    //        Buffer.BlockCopy(cData, 0, temp, 4, cPos);
+    //        cData = temp;
+
+
+    //        return cData;
+    //    }
+
+
+    //    /// <summary>
+    //    /// Writes the compressed data.
+    //    /// </summary>
+    //    /// <param name="startOffset">The start offset.</param>
+    //    /// <returns>
+    //    /// <see langword="true"/> if the data was compressed; otherwise, <see langword="false"/>.
+    //    /// </returns>
+    //    private bool WriteCompressedData(int startOffset) {
+    //        int endOffset = readPos - 1;
+    //        int run = endOffset - lastWritePos;
+
+    //        while (run > 3) // 1 byte literal op code 0xE0 - 0xFB
+    //        {
+    //            int blockLength = Math.Min(run & ~3, LiteralRunMaxLength);
+
+    //            if ((cPos + blockLength + 1) >= cData.Length) {
+    //                return false; // data did not compress
+    //            }
+
+    //            cData[cPos] = (byte) (0xE0 + ((blockLength / 4) - 1));
+    //            cPos++;
+
+    //            // A for loop is faster than Buffer.BlockCopy for data less than or equal to 32 bytes.
+    //            if (blockLength <= 32) {
+    //                for (int i = 0; i < blockLength; i++) {
+    //                    cData[cPos] = dData[lastWritePos];
+    //                    lastWritePos++;
+    //                    cPos++;
+    //                }
+    //            } else {
+    //                Buffer.BlockCopy(dData, lastWritePos, cData, cPos, blockLength);
+    //                lastWritePos += blockLength;
+    //                cPos += blockLength;
+    //            }
+
+    //            run -= blockLength;
+    //        }
+
+    //        int copyLength = this.prevLength;
+    //        // Subtract one before encoding the copy offset, the QFS decompression algorithm adds it back when decoding.
+    //        int copyOffset = endOffset - startOffset - 1;
+
+    //        if (copyLength <= 10 && copyOffset < 1024) // 2 byte op code  0x00 - 0x7f
+    //        {
+    //            if ((cPos + run + 2) >= cData.Length) {
+    //                return false; // data did not compress
+    //            }
+
+    //            cData[cPos] = (byte) ((((copyOffset >> 8) << 5) + ((copyLength - 3) << 2)) + run);
+    //            cData[cPos + 1] = (byte) (copyOffset & 0xff);
+    //            cPos += 2;
+    //        } else if (copyLength <= 67 && copyOffset < 16384)  // 3 byte op code 0x80 - 0xBF
+    //          {
+    //            if ((cPos + run + 3) >= cData.Length) {
+    //                return false; // data did not compress
+    //            }
+
+    //            cData[cPos] = (byte) (0x80 + (copyLength - 4));
+    //            cData[cPos + 1] = (byte) ((run << 6) + (copyOffset >> 8));
+    //            cData[cPos + 2] = (byte) (copyOffset & 0xff);
+    //            cPos += 3;
+    //        } else // 4 byte op code 0xC0 - 0xDF
+    //          {
+    //            if ((cPos + run + 4) >= cData.Length) {
+    //                return false; // data did not compress
+    //            }
+
+    //            cData[cPos] = (byte) (((0xC0 + ((copyOffset >> 16) << 4)) + (((copyLength - 5) >> 8) << 2)) + run);
+    //            cData[cPos + 1] = (byte) ((copyOffset >> 8) & 0xff);
+    //            cData[cPos + 2] = (byte) (copyOffset & 0xff);
+    //            cData[cPos + 3] = (byte) ((copyLength - 5) & 0xff);
+    //            cPos += 4;
+    //        }
+
+    //        for (int i = 0; i < run; i++) {
+    //            cData[cPos] = dData[lastWritePos];
+    //            lastWritePos++;
+    //            cPos++;
+    //        }
+    //        lastWritePos += copyLength;
+
+    //        return true;
+    //    }
+
+    //    /// <summary>
+    //    /// Writes the trailing bytes after the last compressed block.
+    //    /// </summary>
+    //    /// <returns>
+    //    /// <see langword="true"/> if the data was compressed; otherwise, <see langword="false"/>.
+    //    /// </returns>
+    //    private bool WriteTrailingBytes() {
+    //        int run = readPos - lastWritePos;
+
+    //        while (run > 3) // 1 byte literal op code 0xE0 - 0xFB
+    //        {
+    //            int blockLength = Math.Min(run & ~3, LiteralRunMaxLength);
+
+    //            if ((cPos + blockLength + 1) >= cData.Length) {
+    //                return false; // data did not compress
+    //            }
+
+    //            cData[cPos] = (byte) (0xE0 + ((blockLength / 4) - 1));
+    //            cPos++;
+
+    //            // A for loop is faster than Buffer.BlockCopy for data less than or equal to 32 bytes.
+    //            if (blockLength <= 32) {
+    //                for (int i = 0; i < blockLength; i++) {
+    //                    cData[cPos] = dData[lastWritePos];
+    //                    lastWritePos++;
+    //                    cPos++;
+    //                }
+    //            } else {
+    //                Buffer.BlockCopy(dData, lastWritePos, cData, cPos, blockLength);
+    //                lastWritePos += blockLength;
+    //                cPos += blockLength;
+    //            }
+    //            run -= blockLength;
+    //        }
+
+    //        if ((cPos + run + 1) >= cData.Length) {
+    //            return false;
+    //        }
+
+    //        cData[cPos] = (byte) (0xFC + run);
+    //        cPos++;
+
+    //        for (int i = 0; i < run; i++) {
+    //            cData[cPos] = dData[lastWritePos];
+    //            lastWritePos++;
+    //            cPos++;
+    //        }
+
+    //        return true;
+    //    }
+
+
+
+    //    /// <summary>
+    //    /// Finds the longest the run of data to compress.
+    //    /// </summary>
+    //    /// <param name="currentMatch">The current match length.</param>
+    //    /// <returns>The longest the run of data to compress.</returns>
+    //    /// <remarks>
+    //    /// This method has been adapted from deflate.c in zlib version 1.2.3.
+    //    /// </remarks>
+    //    private int LongestMatch(int currentMatch) {
+    //        int chainLength = MaxChain;
+    //        int scan = readPos;
+    //        int bestLength = prevLength;
+
+    //        if (bestLength >= remaining) {
+    //            return remaining;
+    //        }
+
+    //        byte scanEnd1 = dData[scan + bestLength - 1];
+    //        byte scanEnd = dData[scan + bestLength];
+
+    //        // Do not waste too much time if we already have a good match:
+    //        if (prevLength >= GoodLength) {
+    //            chainLength >>= 2;
+    //        }
+    //        int niceLength = NiceLength;
+
+    //        // Do not look for matches beyond the end of the input. This is necessary
+    //        // to make deflate deterministic.
+    //        if (niceLength > remaining) {
+    //            niceLength = remaining;
+    //        }
+
+    //        int maxLength = Math.Min(remaining, MaxMatch);
+    //        int limit = readPos > maxWindowOffset ? readPos - maxWindowOffset : 0;
+
+    //        do {
+    //            int match = currentMatch;
+
+    //            // Skip to next match if the match length cannot increase
+    //            // or if the match length is less than 2:
+    //            if (dData[match + bestLength] != scanEnd ||
+    //                dData[match + bestLength - 1] != scanEnd1 ||
+    //                dData[match] != dData[scan] ||
+    //                dData[match + 1] != dData[scan + 1]) {
+    //                continue;
+    //            }
+
+    //            int len = 2;
+    //            do {
+    //                len++;
+    //            }
+    //            while (len < maxLength && dData[scan + len] == dData[match + len]);
+
+    //            if (len > bestLength) {
+    //                this.matchStart = currentMatch;
+    //                bestLength = len;
+    //                if (len >= niceLength) {
+    //                    break;
+    //                }
+    //                scanEnd1 = dData[scan + bestLength - 1];
+    //                scanEnd = dData[scan + bestLength];
+    //            }
+    //        }
+    //        while ((currentMatch = prev[currentMatch & windowMask]) >= limit && --chainLength > 0);
+
+    //        return bestLength;
+    //    }
+    //}
 }
