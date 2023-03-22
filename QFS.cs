@@ -298,7 +298,7 @@ namespace QFS {
 			cData[4] = (byte) (dData.Length & 0xff);
 			int cPos = 5;
 
-			int bestlength, blen, offset, bestoffset = default;
+			int bestLength, matchLength, offset, bestoffset = default;
 			int lastwrote = 0;
 			int x, idx;
 			int tmpx, tmpy;
@@ -317,22 +317,24 @@ namespace QFS {
 				offset = x;
 
 				// if this has already been compressed, skip ahead
-				
 				if (dPos >= lastwrote) {
 					// look for a redundancy (repeat)
-					bestlength = 0;
+					bestLength = 0;
 					idx = 0;
 
 					//this will skip until the first repetition is encountered
 					while (offset >= 0 & dPos - offset < WINDOW_SIZE & idx < QFS_MAXITER) {
-						blen = 2;
+						matchLength = 2;
 
-						//this loop figures the length of the matching sequence, writing to blen
-						while (dData[dPos + blen] == dData[offset + blen] & blen < 1028) { // !!! this is why Buffer needs to be 1028> than actual data
-							blen++; // do while ((*(incmp++)==*(inref++)) and (blen<1028))
+						//Figure the length of the matching sequence in matchLength
+						while (dData[dPos + matchLength] == dData[offset + matchLength] && matchLength < 1028) { // !!! this is why Buffer needs to be 1028> than actual data
+							matchLength++;
+							if (dPos + matchLength >= dData.Length) {
+								break;
+							}
 						}
-						if (blen > bestlength) {
-							bestlength = blen;
+						if (matchLength > bestLength) {
+							bestLength = matchLength;
 							bestoffset = dPos - offset;
 						}
 						offset = rev_similar[offset & WINDOW_MASK] - 1; // just reduce by one before using
@@ -340,78 +342,78 @@ namespace QFS {
 					}
 
 					// check if (repeat) redundancy is good enough
-					if (bestlength > dData.Length - dPos)
-						bestlength = 0; // was (InPos - InLen) effectively - best length
-					if (bestlength <= 2) {
-						bestlength = 0;
-					} else if (bestlength == 3 & bestoffset > 1024) {
-						bestlength = 0;
-					} else if (bestlength == 4 & bestoffset > 16384) {
-						bestlength = 0;
+					if (bestLength > dData.Length - dPos)
+						bestLength = 0; // was (InPos - InLen) effectively - best length
+					if (bestLength <= 2) {
+						bestLength = 0;
+					} else if (bestLength == 3 & bestoffset > 1024) {
+						bestLength = 0;
+					} else if (bestLength == 4 & bestoffset > 16384) {
+						bestLength = 0;
 					}
 
 					// update compressed data
-					if (bestlength != 0) {
+					if (bestLength != 0) {
 
 						//write the number of plain text at the very start that will never have a match
 						while (dPos - lastwrote >= 4) {
-							//write the control character (blen) to the data
-							blen = (dPos - lastwrote) / 4 - 1;
-							if (blen > 0x1B)
-								blen = 0x1B;
-							cData[cPos] = (byte) (0xE0 + blen);
+							//write the control character (matchLength) to the data
+							matchLength = (dPos - lastwrote) / 4 - 1;
+							if (matchLength > 0x1B)
+								matchLength = 0x1B;
+							cData[cPos] = (byte) (0xE0 + matchLength);
 							cPos++;
-							blen = 4 * blen + 4;
-							SlowMemCopy(cData, cPos, dData, lastwrote, blen);
-							lastwrote += blen; //last position of the dData wrote
-							cPos += blen;
+							matchLength = 4 * matchLength + 4;
+							SlowMemCopy(cData, cPos, dData, lastwrote, matchLength);
+							lastwrote += matchLength; //last position of the dData wrote
+							cPos += matchLength;
 						}
 
 						//now write the matches
-						//blen is now the length of plain text
-						blen = dPos - lastwrote;
+						//matchLength is now the length of plain text
+						matchLength = dPos - lastwrote;
 
 						//2 byte control character
-						if (bestlength <= 10 && bestoffset <= 1024) {
-							cData[cPos] = (byte) ((bestoffset - 1) / 256 * 32 + (bestlength - 3) * 4 + blen);
+						if (bestLength <= 10 && bestoffset <= 1024) {
+							cData[cPos] = (byte) ((bestoffset - 1) / 256 * 32 + (bestLength - 3) * 4 + matchLength);
 							cPos++;
 							cData[cPos] = (byte) (bestoffset - 1 & 0xFF);
 							cPos++;
-							SlowMemCopy(cData, cPos, dData, lastwrote, blen); //write the length of plain text
-							lastwrote += blen;
-							cPos += blen;
-							lastwrote += bestlength; //update the last write length to skip over the matched bytes
+							SlowMemCopy(cData, cPos, dData, lastwrote, matchLength); //write the length of plain text
+							lastwrote += matchLength;
+							cPos += matchLength;
+							lastwrote += bestLength; //update the last write length to skip over the matched bytes
 						} 
 						
 
-						else if (bestlength <= 67 && bestoffset <= 16384) {
-							cData[cPos] = (byte) (0x80 + (bestlength - 4));
+						else if (bestLength <= 67 && bestoffset <= 16384) {
+							cData[cPos] = (byte) (0x80 + (bestLength - 4));
 							cPos++;
-							cData[cPos] = (byte) (blen * 64 + (bestoffset - 1) / 256);
+							cData[cPos] = (byte) (matchLength * 64 + (bestoffset - 1) / 256);
 							cPos++;
 							cData[cPos] = (byte) (bestoffset - 1 & 0xFF);
 							cPos++;
-							SlowMemCopy(cData, cPos, dData, lastwrote, blen);
-							lastwrote += blen;
-							cPos += blen;
-							lastwrote += bestlength;
+							SlowMemCopy(cData, cPos, dData, lastwrote, matchLength);
+							lastwrote += matchLength;
+							cPos += matchLength;
+							lastwrote += bestLength;
 						} 
 						
 
-						else if (bestlength <= 1028 && bestoffset < WINDOW_SIZE) {
+						else if (bestLength <= 1028 && bestoffset < WINDOW_SIZE) {
 							bestoffset--;
-							cData[cPos] = (byte) (0xC0 + bestoffset / 65536 * 16 + (bestlength - 5) / 256 * 4 + blen);
+							cData[cPos] = (byte) (0xC0 + bestoffset / 65536 * 16 + (bestLength - 5) / 256 * 4 + matchLength);
 							cPos++;
 							cData[cPos] = (byte) (bestoffset / 256 & 0xFF);
 							cPos++;
 							cData[cPos] = (byte) (bestoffset & 0xFF);
 							cPos++;
-							cData[cPos] = (byte) (bestlength - 5 & 0xFF);
+							cData[cPos] = (byte) (bestLength - 5 & 0xFF);
 							cPos++;
-							SlowMemCopy(cData, cPos, dData, lastwrote, blen);
-							lastwrote += blen;
-							cPos += blen;
-							lastwrote += bestlength;
+							SlowMemCopy(cData, cPos, dData, lastwrote, matchLength);
+							lastwrote += matchLength;
+							cPos += matchLength;
+							lastwrote += bestLength;
 						}
 					}
 				}
@@ -420,24 +422,24 @@ namespace QFS {
 			// end stuff
 			dPos = dData.Length;
 			while (dPos - lastwrote >= 4) {
-				blen = (dPos - lastwrote) / 4 - 1;
-				if (blen > 0x1B) {
-                    blen = 0x1B;
+				matchLength = (dPos - lastwrote) / 4 - 1;
+				if (matchLength > 0x1B) {
+                    matchLength = 0x1B;
                 }
-				cData[cPos] = (byte) (0xE0 + blen);
+				cData[cPos] = (byte) (0xE0 + matchLength);
 				cPos++;
-				blen = 4 * blen + 4;
-				SlowMemCopy(cData, cPos, dData, lastwrote, blen);
-				lastwrote += blen;
-				cPos += blen;
+				matchLength = 4 * matchLength + 4;
+				SlowMemCopy(cData, cPos, dData, lastwrote, matchLength);
+				lastwrote += matchLength;
+				cPos += matchLength;
 			}
 
-			blen = dPos - lastwrote;
-			cData[cPos] = (byte) (0xFC + blen);  // end marker
+			matchLength = dPos - lastwrote;
+			cData[cPos] = (byte) (0xFC + matchLength);  // end marker
 			cPos++;
-			SlowMemCopy(cData, cPos, dData, lastwrote, blen);
-			lastwrote += blen;
-			cPos += blen;
+			SlowMemCopy(cData, cPos, dData, lastwrote, matchLength);
+			lastwrote += matchLength;
+			cPos += matchLength;
 
 			if (lastwrote != dData.Length) {
 				throw new Exception("Something strange happened at the end of QFS compression!");
@@ -447,7 +449,7 @@ namespace QFS {
 			//Add the final byte size to the very start
 			byte[] output = new byte[cData.Length+4];
 			Array.Copy(cData, 0, output, 4, cData.Length);
-			byte[] size = BitConverter.GetBytes(output.Length);
+			byte[] size = BitConverter.GetBytes(cData.Length);
 			Array.Copy(size, 0, output, 0, 4);
 			return output;
 		}
